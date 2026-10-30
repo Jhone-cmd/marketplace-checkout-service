@@ -72,7 +72,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
         return this.connection;
     }
 
-    async publishMessage(exchange: string, routingKey: string, message: any) {
+    async publishMessage(exchange: string, routingKey: string, message: any): Promise<void> {
         try {
             if (!this.channel) {
                 this.logger.warn('⚠️  RabbitMQ channel not available, skipping message publish');
@@ -98,6 +98,48 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
 
         } catch (error: Error | any) {
             this.logger.error('❌ Failed to publish message', error.message || error);
+        }
+    }
+
+    async subscribeToQueue(queueName: string, exchange: string, routingKey: string, cb: (message: unknown) => Promise<void>): Promise<void> {
+        try {
+            if (!this.channel) {
+                this.logger.warn('⚠️  RabbitMQ channel not available, skipping queue subscription');
+                return;
+            }
+            await this.channel.assertExchange(exchange, 'topic', { durable: true });
+
+            const queue = await this.channel.assertQueue(queueName, { durable: true, arguments: { 'x-message-ttl': 86400000, 'x-max-length': 10000 } });
+
+            await this.channel.bindQueue(queue.queue, exchange, routingKey);
+
+            await this.channel.prefetch(1); // Process one message at a time
+
+            this.channel.consume(queue.queue, async (msg) => {
+                if (msg) {
+                    try {
+                        const message: unknown = JSON.parse(msg.content.toString());
+
+                        this.logger.log(`📨 Message received from queue: ${queueName}`);
+                        this.logger.debug(`Message content: ${JSON.stringify(message)}`);
+
+                        await cb(message);
+
+                        this.channel.ack(msg);
+
+                        this.logger.log(
+                            `✅ Message processed successfully from queue: ${queueName}`,
+                        );
+
+                    } catch (error: Error | any) {
+                        this.logger.error('❌ Error processing message', error.message || error);
+                        this.channel.nack(msg, false, false); // Reject the message and do not requeue
+                        // TODO: dead letter queue handling can be implemented here if needed
+                    }
+                }
+            });
+        } catch (error: Error | any) {
+            this.logger.error(`❌ Error subscribing to queue ${queueName}`, error.message || error);
         }
     }
 }
