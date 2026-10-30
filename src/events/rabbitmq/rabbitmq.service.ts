@@ -28,7 +28,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
 
             // Events listener para monitorar a conexão
             this.connection.on('error', (error) => {
-                this.logger.error('❌  RabbitMQ connection error', error);
+                this.logger.error('❌ RabbitMQ connection error', error);
             });
 
             this.connection.on('close', () => {
@@ -60,7 +60,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
             }
 
         } catch (error: Error | any) {
-            this.logger.error('❌  Failed to disconnect from RabbitMQ', error.message || error);
+            this.logger.error('❌ Failed to disconnect from RabbitMQ', error.message || error);
         }
     }
 
@@ -70,5 +70,34 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
 
     getConnection(): amqp.ChannelModel {
         return this.connection;
+    }
+
+    async publishMessage(exchange: string, routingKey: string, message: any) {
+        try {
+            if (!this.channel) {
+                this.logger.warn('⚠️  RabbitMQ channel not available, skipping message publish');
+                return;
+            }
+
+            await this.channel.assertExchange(exchange, 'topic', { durable: true });
+            const messageBuffer = Buffer.from(JSON.stringify(message));
+
+            const published = this.channel.publish(exchange, routingKey, messageBuffer, {
+                persistent: true,
+                timestamp: Date.now(),
+                contentType: 'application/json',
+            });
+
+            if (!published) {
+                throw new Error('❌ Failed to publish message to RabbitMQ');
+            }
+
+            this.logger.log(`✅ Message published to"${exchange}":"${routingKey}"`);
+            this.logger.debug(`Message content: ${JSON.stringify(message)}`);
+
+
+        } catch (error: Error | any) {
+            this.logger.error('❌ Failed to publish message', error.message || error);
+        }
     }
 }
