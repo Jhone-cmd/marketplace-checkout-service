@@ -1,4 +1,10 @@
 import { Module } from '@nestjs/common';
+import { RabbitmqService } from './rabbitmq/rabbitmq.service.js';
+import { ConfigModule } from '@nestjs/config';
 
-@Module({})
-export class EventsModule {}
+@Module({
+  imports: [ConfigModule],
+  providers: [RabbitmqService],
+  exports: [RabbitmqService],
+})
+export class EventsModule { }
